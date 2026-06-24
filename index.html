@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>看看今天到没到十万</title>
+    <!-- 引入 ECharts -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 20px; background-color: #f4f6f8; display: flex; justify-content: center; }
+        .container { width: 100%; max-width: 500px; background: white; padding: 25px; border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+        
+        /* 顶部提示 */
+        .header { font-size: 14px; color: #888; margin-bottom: 10px; }
+        .header span { background: #00a1d6; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+        
+        /* 大数字展示 */
+        .fans-box { font-size: 56px; font-weight: bold; color: #ff6699; margin: 10px 0 5px 0; letter-spacing: 1px; }
+        .fans-label { font-size: 14px; color: #999; margin-bottom: 20px; }
+        
+        /* 按钮 */
+        .btn-group { display: flex; justify-content: center; gap: 12px; margin-bottom: 20px; }
+        .btn { padding: 10px 30px; font-size: 16px; cursor: pointer; border: none; border-radius: 30px; transition: 0.2s; }
+        .btn-primary { background: #00a1d6; color: white; box-shadow: 0 4px 10px rgba(0, 161, 214, 0.3); }
+        .btn-primary:disabled { background: #ccc; box-shadow: none; cursor: not-allowed; }
+        .btn-primary:active { transform: scale(0.95); }
+        
+        /* 状态提示 */
+        .status-msg { height: 20px; font-size: 13px; color: #ff4d4f; margin-bottom: 10px; }
+        .cooldown { color: #00a1d6; font-weight: bold; }
+        
+        /* 图表容器 */
+        #chart { width: 100%; height: 280px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        🎯 专属追踪 · <span>钟明先生的硕据</span>
+    </div>
+    
+    <div class="fans-box" id="fansDisplay">---</div>
+    <div class="fans-label">当前粉丝数</div>
+    
+    <div class="btn-group">
+        <button class="btn btn-primary" id="queryBtn">🔄 刷新硕据</button>
+    </div>
+    
+    <div class="status-msg" id="statusMsg"></div>
+    <!-- 如果还没数据时显示提示 -->
+    <div id="chart"></div>
+</div>
+
+<script>
+    // ==========================================
+    // ★★★ 核心配置：在这里改成你想追踪的 UID ★★★
+    // ==========================================
+    const TARGET_UID = "3493291261692485"; // 直接用你的例子，换成你自己的就行
+
+    // 初始化图表
+    let myChart = echarts.init(document.getElementById('chart'));
+    let historyDates = []; 
+    let historyFans = [];  
+
+    // 更新图表函数
+    function updateChart() {
+        const option = {
+            tooltip: { trigger: 'axis', formatter: '{b}<br/>粉丝: {c}' },
+            grid: { left: '3%', right: '4%', bottom: '3%', top: '10%', containLabel: true },
+            xAxis: {
+                type: 'category',
+                data: historyDates,
+                axisLabel: { fontSize: 10, color: '#999' },
+                axisLine: { show: false },
+                axisTick: { show: false }
+            },
+            yAxis: {
+                type: 'value',
+                scale: true,
+                splitLine: { lineStyle: { color: '#eee', type: 'dashed' } },
+                axisLabel: { fontSize: 10, color: '#999' }
+            },
+            series: [{
+                data: historyFans,
+                type: 'line',
+                smooth: true,
+                symbol: 'circle',
+                symbolSize: 6,
+                lineStyle: { color: '#ff6699', width: 3 },
+                areaStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: 'rgba(255, 102, 153, 0.4)' },
+                        { offset: 1, color: 'rgba(255, 102, 153, 0.0)' }
+                    ])
+                }
+            }]
+        };
+        myChart.setOption(option);
+    }
+
+    // 读取本地历史数据
+    function loadHistory() {
+        const history = JSON.parse(localStorage.getItem('fansHistory')) || [];
+        historyDates = history.map(item => item.time);
+        historyFans = history.map(item => item.fans);
+        updateChart();
+        
+        // 如果历史有数据，大数字显示最后一次的结果
+        if (historyFans.length > 0) {
+            document.getElementById('fansDisplay').innerText = historyFans[historyFans.length - 1];
+        }
+    }
+    loadHistory();
+
+    // 保存并刷新
+    function saveAndUpdate(newFans) {
+        const now = new Date();
+        const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        
+        let history = JSON.parse(localStorage.getItem('fansHistory')) || [];
+        history.push({ time: timeStr, fans: newFans });
+        
+        // 保留最近 50 条
+        if (history.length > 50) { history = history.slice(-50); }
+        localStorage.setItem('fansHistory', JSON.stringify(history));
+
+        loadHistory(); // 刷新图表和数字
+    }
+
+    // --- 抓取逻辑 ---
+    let lastClickTime = 0;
+    let cooldownTimer = null;
+    const queryBtn = document.getElementById('queryBtn');
+    const statusMsg = document.getElementById('statusMsg');
+    const fansDisplay = document.getElementById('fansDisplay');
+
+    async function fetchFans() {
+        try {
+            statusMsg.innerText = '正在查询...';
+            statusMsg.style.color = '#00a1d6';
+            
+            const response = await fetch(`https://api.bilibili.com/x/relation/stat?vmid=${TARGET_UID}&web_location=333.1387`);
+            const data = await response.json();
+            
+            if (data.code === 0) {
+                const currentFans = data.data.follower;
+                fansDisplay.innerText = currentFans;
+                statusMsg.innerText = `✅ 查询成功 (${new Date().toLocaleTimeString()})`;
+                statusMsg.style.color = '#52c41a';
+                
+                saveAndUpdate(currentFans);
+            } else {
+                statusMsg.innerText = `❌ 接口报错: ${data.message}`;
+                statusMsg.style.color = '#ff4d4f';
+            }
+        } catch (error) {
+            statusMsg.innerText = '❌ 网络请求失败，请检查网络';
+            statusMsg.style.color = '#ff4d4f';
+        }
+    }
+
+    queryBtn.addEventListener('click', function() {
+        const now = Date.now();
+
+        // 60秒防刷
+        if (now - lastClickTime < 60000) {
+            const remaining = Math.ceil((60000 - (now - lastClickTime)) / 1000);
+            statusMsg.innerText = `⏳ 请稍候，冷却中 ${remaining}s`;
+            statusMsg.style.color = '#faad14';
+            queryBtn.disabled = true;
+            
+            let countDown = remaining;
+            if (cooldownTimer) clearInterval(cooldownTimer);
+            cooldownTimer = setInterval(() => {
+                countDown--;
+                statusMsg.innerText = `⏳ 请稍候，冷却中 ${countDown}s`;
+                if (countDown <= 0) {
+                    clearInterval(cooldownTimer);
+                    queryBtn.disabled = false;
+                    statusMsg.innerText = '';
+                }
+            }, 1000);
+            return;
+        }
+
+        lastClickTime = now;
+        fetchFans();
+    });
+
+    // 页面加载后自动查一次
+    window.onload = function() {
+        document.getElementById('queryBtn').click();
+    };
+</script>
+</body>
+</html>
