@@ -252,8 +252,10 @@
                 // 发送带浏览器伪装头部的 fetch 请求
                 const response = await fetch(apiUrl, {
                     headers: {
-                        'Accept': 'application/json, text/plain, */*',
-                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+                        // 这一句是核心，告诉B站“我是从B站主页发起的请求”
+                        'Referer': 'https://space.bilibili.com/',
+                        // 伪装成电脑浏览器
+                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                     }
                 });
 
@@ -274,34 +276,6 @@
                 statusMsg.style.color = '#ff4d4f';
                 console.error(error);
             }
-        }
-        // ★★★ 直接替换 fetch 函数的逻辑 ★★★
-        function getBiliData() {
-            const statusMsg = document.getElementById('statusMsg');
-            const display = document.getElementById('fansDisplay');
-            statusMsg.innerText = '正在获取...';
-
-            // 定义一个回调函数，数据回来后会触发它
-            window.biliCallback = function (data) {
-                if (data.code === 0) {
-                    // 这里写你拿到数据后，更新界面和画图的逻辑
-                    const fans = data.data.follower; // 注意这里的数据层级取决于你找到的真实接口
-                    display.innerText = fans;
-                    statusMsg.innerText = `更新成功`;
-
-                    // 把你的存 localStorage 和 画 ECharts 的逻辑放在这里...
-                    // saveAndUpdate(fans); 
-                    // loadHistory();
-                }
-            };
-
-            // 动态创建一个 script 标签发请求 (这是全网唯一能绝对绕过 Github 域名 403 的方法)
-            const script = document.createElement('script');
-            // ★★★ 把你找对的接口地址放在这里，后面加上 &callback=biliCallback ★★★
-            script.src = `https://api.bilibili.com/x/relation/stat?vmid=${TARGET_UID}&web_location=333.1387&callback=biliCallback`;
-            document.body.appendChild(script);
-            // 用完清除
-            setTimeout(() => { document.body.removeChild(script); }, 5000);
         }
 
         queryBtn.addEventListener('click', function () {
@@ -330,7 +304,6 @@
 
             lastClickTime = now;
             fetchFans();
-            // getBiliData();
         });
 
         // 页面加载后自动查一次
